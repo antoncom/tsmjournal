@@ -3,18 +3,23 @@
 INITFILE=/etc/init.d/tsmjournal
 SERVICE_PID_FILE=/var/run/tsmjournal.pid
 
+INMEMORY=$(uci get tsmjournal.database.inmemory)
+ONDISK=$(uci get tsmjournal.database.ondisk)
+
 APP=$0
 CMD=$1
+UI=$2
 usage() {
-    echo "Usage: $APP [ COMMAND ]"
+    echo "Usage: $APP [ COMMAND ] [/ui]"
     echo
     echo "Commands are:"
-    echo "    start/stop/enable/disable - as usual"
+    echo "    start/stop"
     echo "    load      Load journal from disk to memory"
-    echo "    drop      Drop journal from memory to disk"
+    echo "    dump      Dump journal from memory to disk"
     echo "    clear     Clear both: memory & disk"
     echo "    help      Show this and exit"
     echo
+    echo "    load/dump/clear ui   Return status/error used in UIJournal.js.htm"
 }
 
 callinit() {
@@ -35,74 +40,91 @@ run() {
     RETVAL=$?
 }
 
-drop() {
+dump() {
 	# Если нет директории для хранения на диске - создать
 	# Если нет директории для хранения в памяти - создать
+	ERR="$(mkdir -p ${INMEMORY} 2>&1)"
+	ERR="$ERR $(mkdir -p ${ONDISK} 2>&1)"
+	ERR="$ERR $(cp -rf ${INMEMORY}/* ${ONDISK} 2>&1)"
 
-	# Записать в cron-файл настройки из UCI tsmjournal
-	# Перезапустить cron с новыми настойками
-
-	INMEMORY=$(uci get tsmjournal.database.inmemory)
-	ONDISK=$(uci get tsmjournal.database.ondisk)
-
-	SCHED=$(uci get tsmjournal.droptodisk.crontab)
-	JOB="cp -rf ${INMEMORY} ${ONDISK}"
-
-	CRON="${SCHED} ${JOB}"
-
-	mkdir -p ${INMEMORY}
-	mkdir -p ${ONDISK}
-
-	echo "[tsmjournal] INMEMORY folder created: ${INMEMORY}"
-	echo "[tsmjournal] ONDISK folder created: ${ONDISK}"
-
-	# cp -rf ${INMEMORY} ${ONDISK}
-	cp -rf /var/spool/tsmjournal/journal.db/* /etc/tsmjournal/journal.db/
-	echo "[tsmjournal] Journal dropped to disk: ${ONDISK}"
-
-	echo "$CRON" > /etc/crontabs/root
-	/etc/init.d/cron restart &> /dev/null
-	echo "[tsmjournal] Journal crontabbed like this: ${CRON}" 
+    size=${#ERR}
+    # Если нет ошибки и параметр "ui" не передан в командной строке
+    if [ $size -lt 3 ] && [ -z $UI ]; then
+	    echo "[tsmjournal] INMEMORY folder created: ${INMEMORY}"
+        echo "[tsmjournal] ONDISK folder created: ${ONDISK}"
+        echo "[tsmjournal] Journal dumpped to disk: ${ONDISK}"
+    else
+        # Если ошибка и параметр "ui" не передан в командной строке
+        if [ $size -gt 5 ] && [ -z $UI ]; then
+            echo $ERR
+        fi
+        # Если ошибка и параметр "ui" передан в командной строке
+        if [ $size -gt 5 ] && [ -n $UI ]; then
+            echo "[ERROR] $ERR"
+        fi
+        # Если нет ошибки и парметр "ui" передан в командной строке
+        if [ $size -lt 5 ] && [ -n $UI ]; then
+            echo "[OK]"
+        fi
+    fi
 }
 
 load() {
-	# Если нет директории для хранения на диске - создать
-	# Если нет директории для хранения в памяти - создать
+    # Если нет директории для хранения на диске - создать
+    # Если нет директории для хранения в памяти - создать
+    ERR="$(mkdir -p ${INMEMORY} 2>&1)"
+    ERR="$ERR $(mkdir -p ${ONDISK} 2>&1)"
+    ERR=$ERR $(cp -rf ${ONDISK}/* ${INMEMORY} 2>&1)
 
-	# При запуске сервиса tsmodem скопировать содержимое диска в память
-
-	INMEMORY=$(uci get tsmjournal.database.inmemory)
-	ONDISK=$(uci get tsmjournal.database.ondisk)
-	JOB="cp -rf ${ONDISK} ${INMEMORY}"
-
-	mkdir -p ${INMEMORY}
-	mkdir -p ${ONDISK}
-
-	echo "[tsmjournal] INMEMORY folder created: ${INMEMORY}"
-	echo "[tsmjournal] ONDISK folder created: ${ONDISK}"
-
-	cp -rf /etc/tsmjournal/journal.db/* /var/spool/tsmjournal/journal.db/
-	echo "[tsmjournal] Journal loaded to memory: ${INMEMORY}"
-
-	echo "$CRON" > /etc/crontabs/root
-	/etc/init.d/cron restart &> /dev/null
-	echo "[tsmjournal] Journal crontabbed like this: ${CRON}" 
+    size=${#ERR}
+    # Если нет ошибки и параметр "ui" не передан в командной строке
+    if [ $size -lt 5 ] && [ -z $UI ]; then
+        echo "[tsmjournal] INMEMORY folder created: ${INMEMORY}"
+        echo "[tsmjournal] ONDISK folder created: ${ONDISK}"
+        echo "[tsmjournal] Journal loaded to memory: ${INMEMORY}"
+    else
+        # Если ошибка и параметр "ui" не передан в командной строке
+        if [ $size -gt 5 ] && [ -z $UI ]; then
+            echo $ERR
+        fi
+        # Если ошибка и параметр "ui" передан в командной строке
+        if [ $size -gt 5 ] && [ -n $UI ]; then
+            echo "[ERROR] $ERR"
+        fi
+        # Если нет ошибки и парметр "ui" передан в командной строке
+        if [ $size -lt 5 ] && [ -n $UI ]; then
+            echo "[OK]"
+        fi
+    fi
 }
 
 clear() {
-	INMEMORY=$(uci get tsmjournal.database.inmemory)
-	ONDISK=$(uci get tsmjournal.database.ondisk)
-	JOB1="rm -rf ${ONDISK}"
-	JOB1="rm -rf ${INMEMORY}"
+    # Если нет директории для хранения на диске - создать
+    # Если нет директории для хранения в памяти - создать
+    ERR="$(mkdir -p ${INMEMORY} 2>&1)"
+    ERR="$ERR $(mkdir -p ${ONDISK} 2>&1)"
+    ERR="$ERR $(rm -rf ${INMEMORY}/* 2>&1)"
+    ERR="$ERR $(rm -rf ${ONDISK}/* 2>&1)"
 
-	mkdir -p ${INMEMORY}
-	mkdir -p ${ONDISK}
-
-	rm -rf ${ONDISK}
-	echo "[tsmjournal] Journal cleared on disk: ${ONDISK}"
-
-	rm -rf ${INMEMORY}
-	echo "[tsmjournal] Journal cleared in memory: ${INMEMORY}"
+    size=${#ERR}
+    # Если нет ошибки и параметр "ui" не передан в командной строке
+    if [ $size -lt 5 ] && [ -z $UI ]; then
+        echo "[tsmjournal] Journal cleared on disk: ${ONDISK}"
+        echo "[tsmjournal] Journal cleared in memory: ${INMEMORY}"
+    else
+        # Если ошибка и параметр "ui" не передан в командной строке
+        if [ $size -gt 5 ] && [ -z $UI ]; then
+            echo $ERR
+        fi
+        # Если ошибка и параметр "ui" передан в командной строке
+        if [ $size -gt 5 ] && [ -n $UI ]; then
+            echo "[ERROR] $ERR"
+        fi
+        # Если нет ошибки и парметр "ui" передан в командной строке
+        if [ $size -lt 5 ] && [ -n $UI ]; then
+            echo "[OK]"
+        fi
+    fi
 }
 
 debug() {
@@ -139,8 +161,8 @@ case "$CMD" in
     load)
         load
         ;;
-    drop)
-        drop
+    dump)
+        dump
         ;;
     clear)
         clear
