@@ -1,0 +1,12 @@
+
+config journal 'database'
+	option inmemory '/var/spool/tsmjournal'
+	option ondisk '/etc/tsmjournal'
+	option maxsize '50'
+
+config journal 'interval'
+	option dump '60'
+
+config journal 'debug'
+	option enable '0'
+
