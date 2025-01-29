@@ -6,6 +6,7 @@ local sys  = require "luci.sys"
 local uci = require "luci.model.uci".cursor()
 local leveldb = require 'lualeveldb'
 local json = require "cjson"
+local md5 = require "md5"
 
 local timer = require "tsmjournal.timer"
 
@@ -26,6 +27,17 @@ journal.state = {
 	is_dumping = false,
 	is_loading = false,
 	is_clearing = false
+}
+
+--[[ Храним последние значения журналирования по каждому правилу ]]
+--[[ 
+	Если из одного и того же правила поступают одинаковые значения, 
+	то это означает, что состояние журналируемых параметров системы не изменилось.
+	Следовательно нет смысла добавлять в журнал одни и те же занения,
+	и наоборот: надо журналировать только изменения занчения журналируемых параметров.
+]]
+journal.story = {
+	-- ["21_rule"] = md5.sumhexa(util.serialize_json(journal_json))
 }
 
 journal.conn = ubus.connect()
@@ -108,7 +120,16 @@ function journal:make_ubus()
 					local resp = {}
 					if_debug("send", "UBUS", "CALL", msg, "")
 
-					if not (journal.state.is_dumping or journal.state.is_loading or journal.state.is_clearing) then
+					-- Создадим hash-ключ на основе данных записи журнала, поступивших из правила
+					local ruleid = msg["ruleid"]
+					local jmessage = util.clone(msg["journal"])
+					jmessage["datetime"] = nil
+					local jhash = md5.sumhexa(util.serialize_json(jmessage))
+
+					-- Если запись с таким ключом уже существует, то не нужно её вновь добавлять в журнал
+					local no_news_for_journalizing = journal.story[ruleid] and (journal.story[ruleid] == jhash) or false
+
+					if not (no_news_for_journalizing or journal.state.is_dumping or journal.state.is_loading or journal.state.is_clearing) then
 						journal.remove_oldest()
 
 						local key = os.time() -- .. "_" .. (msg["ruleid"] or "undefined")
@@ -116,6 +137,8 @@ function journal:make_ubus()
 							local db = leveldb.open(opt, inmemory_db_path)
 				            db:put(key, json.encode(msg))
 			            	leveldb.close(db)
+			            	-- Если запись новая, сохраняем хеш-ключ в истории
+			            	journal.story[ruleid] = jhash
 				        end)
 
 				        if not success then
