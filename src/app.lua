@@ -69,7 +69,7 @@ function journal.list()
    	local db = leveldb.open(opt, inmemory_db_path)
     local iter = db:iterator()
     iter:seekToFirst()
-   
+
     while iter:valid() do
         local key = iter:key()
         table.insert(entries, key)
@@ -83,6 +83,32 @@ function journal.list()
     end)
 
     return entries
+end
+
+function journal.get_journal_log()
+    local journal_log = ""
+    local db = leveldb.open(opt, inmemory_db_path)
+    local iter = db:iterator()
+    iter:seekToFirst()
+
+    while iter:valid() do
+        local value = iter:value()
+        local json_obj = json.decode(value)
+
+        local datetime = json_obj["journal"]["datetime"]
+        local name = json_obj["journal"]["name"]
+        local command = json_obj["journal"]["command"]
+        local source = json_obj["journal"]["source"]
+        local response = json_obj["journal"]["response"]
+
+        local journal_line = "[".. datetime .. "] " .. name .. " {command: " .. command .. "} " .. source .. " {response: " .. response .. "}"
+        journal_log = journal_log .. journal_line .. "\n"
+        iter:next()
+    end
+    iter:del() -- Clean up iterator
+    leveldb.close(db)
+
+    return journal_log
 end
 
 function journal.remove_oldest()
@@ -148,7 +174,7 @@ function journal:make_ubus()
 				        end
 
 				        journal:websocket_send(msg)
-				        
+
 						journal.conn:reply(req, resp);
 					else
 						journal.conn:reply(req, {["response"] = "[journal]: Aborted due to dumping, or loading, or clearing right now."});
@@ -156,20 +182,28 @@ function journal:make_ubus()
 				end, {id = ubus.INT32, msg = ubus.STRING }
 			},
 			clear = {
-            function(req, msg)
-				if_debug("send", "UBUS", "CALL", journal.timer, "Clear method is called.")
-             
-                journal.timer.clear:set(journal.timer.interval.clear)
+				function(req, msg)
+					if_debug("send", "UBUS", "CALL", journal.timer, "Clear method is called.")
+
+					journal.timer.clear:set(journal.timer.interval.clear)
 
 
-                resp = {
-                	["response"] = "[journal]: Clearing journal is in progress."
-                }
+					local resp = {
+						["response"] = "[journal]: Clearing journal is in progress."
+					}
 
-                journal.conn:reply(req, resp);
+					journal.conn:reply(req, resp);
 
-            end, {id = ubus.INT32, msg = ubus.STRING }
-        },
+				end, {id = ubus.INT32, msg = ubus.STRING }
+            },
+            get_journal_log = {
+                function (req, msg)
+                    if_debug("get_journal_log", "UBUS", "CALL", "", "")
+                    local journal_log = journal.get_journal_log()
+                    local resp = { ["response"] = journal_log }
+                    journal.conn:reply(req, resp)
+                end, { }
+            },
 		}
 	}
 	journal.conn:add( ubus_methods )
