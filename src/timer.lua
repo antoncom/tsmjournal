@@ -1,3 +1,6 @@
+-- Модуль предназначен для периодической записи журнала на flash-память
+-- а также для восстановления журнала в памяти.
+
 local uci = require "luci.model.uci".cursor()
 local util = require "luci.util"
 local uloop = require "uloop"

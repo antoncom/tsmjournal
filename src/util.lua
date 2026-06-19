@@ -1,3 +1,5 @@
+-- Модуль вспомогательных функций
+
 local uci = require "luci.model.uci".cursor()
 local util = require "luci.util"
 
